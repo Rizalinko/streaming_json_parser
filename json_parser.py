@@ -73,6 +73,39 @@ class StreamingJsonParser:
 
         return self._result
 
+    def _skip_invalid_value(self, s: str, i: int) -> int:
+        """
+        Skip over an invalid value construct (array, number, boolean, null).
+        Returns the index after the invalid construct.
+        """
+        i = skip_ws(s, i)
+        if i >= len(s):
+            return i
+
+        ch = s[i]
+
+        # Skip array
+        if ch == '[':
+            depth = 1
+            i += 1
+            while i < len(s) and depth > 0:
+                if s[i] == '[':
+                    depth += 1
+                elif s[i] == ']':
+                    depth -= 1
+                elif s[i] == '"':
+                    # Skip strings inside arrays
+                    _, i, _ = read_string(s, i)
+                    continue
+                i += 1
+            return i
+
+        # Skip boolean, null, or number (anything that's not a quote or brace)
+        while i < len(s) and s[i] not in (',', '}', ' ', '\t', '\n', '\r'):
+            i += 1
+
+        return i
+
     def _read_value(self, s: str, i: int) -> tuple[Any, int, bool, bool]:
         """
         Returns (value for key, next_index, partial, invalid)
@@ -133,7 +166,10 @@ class StreamingJsonParser:
             i += 1
 
             value, i, val_partial, invalid = self._read_value(s, i)
-            if value and not invalid:
+            if invalid:
+                # Skip over the invalid construct
+                i = self._skip_invalid_value(s, i)
+            elif value:
                 obj[key] = value
 
             i = skip_ws(s, i)

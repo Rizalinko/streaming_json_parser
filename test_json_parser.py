@@ -150,7 +150,8 @@ def test_parse_object_returns_correct_if_json_has_unsupported_construct():
     parser = StreamingJsonParser()
     s = '{"key": "value", "invalid": [1, 2, 3]}'
     obj, i, partial, invalid = parser._parse_object(s, 0)
-    assert invalid is True
+    assert invalid is False  # Parser successfully skips invalid values and continues
+    assert partial is False  # Object is complete
     assert obj == {"key": "value"}
 
 def test_parse_object_returns_complete_for_valid_object():
@@ -160,3 +161,43 @@ def test_parse_object_returns_complete_for_valid_object():
     assert partial is False
     assert invalid is False
     assert obj ==  {"key":  {"another": "item"}}
+
+
+def test_skip_invalid_value_skips_simple_array():
+    parser = StreamingJsonParser()
+    s = '[1, 2, 3], "next": "value"}'
+    i = parser._skip_invalid_value(s, 0)
+    assert i == 9  # Should skip to after the closing bracket
+    assert s[i] == ','
+
+
+def test_skip_invalid_value_skips_nested_arrays():
+    parser = StreamingJsonParser()
+    s = '[1, [2, 3], 4], "next": "value"}'
+    i = parser._skip_invalid_value(s, 0)
+    assert i == 14  # Should skip the entire nested array
+    assert s[i] == ','
+
+
+def test_skip_invalid_value_skips_boolean():
+    parser = StreamingJsonParser()
+    s = 'true, "next": "value"}'
+    i = parser._skip_invalid_value(s, 0)
+    assert i == 4  # Should skip "true"
+    assert s[i] == ','
+
+
+def test_skip_invalid_value_skips_float():
+    parser = StreamingJsonParser()
+    s = '123.456, "next": "value"}'
+    i = parser._skip_invalid_value(s, 0)
+    assert i == 7  # Should skip "123.456"
+    assert s[i] == ','
+
+
+def test_skip_invalid_value_stops_at_closing_brace():
+    parser = StreamingJsonParser()
+    s = 'true}'
+    i = parser._skip_invalid_value(s, 0)
+    assert i == 4  # Should skip "true"
+    assert s[i] == '}'
