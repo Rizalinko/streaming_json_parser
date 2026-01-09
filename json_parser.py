@@ -1,20 +1,23 @@
 """
 Streaming JSON parser: a class to efficiently parse JSON objects from a stream of text input.
 
-The class has a variable-length internal buffer that accumulates incoming text chunks. The parser attempts to parse complete JSON objects
+The class has a variable-length internal buffer that accumulates incoming text chunks.
+The parser attempts to parse complete JSON objects
 from the buffer whenever requested, returning the last successfully parsed object.
 
 The following assumptions are made for the simplification:
 - The strings have no escape characters, therefore during the parsing we do not check for them.
-- !!! The parsed JSON should only contain objects (dictionaries including nested dictionaries) and strings as values, thus anything else
-(numbers, arrays, booleans, null) is considered invalid and ignored.
+- The parsed JSON should only contain objects (dictionaries including nested dictionaries)
+and strings as values, thus anything else (numbers, arrays, booleans, null) is
+considered invalid and ignored.
            Example of input:
                 '{"key1": "value1", "key2": {"nestedKey": "nestedValue"}}'
            Output:
                 {"key1": "value1", "key2": {"nestedKey": "nestedValue"}}
 
            Example of input with invalid constructs:
-                '{"key1": "value1", "key2": ["arrayValue1", "array 2"], "key3": true, "key4": {"nestedKey": "nestedValue"}}'
+                '{"key1": "value1", "key2": ["arrayValue1", "array 2"],
+                 "key3": true, "key4": {"nestedKey": "nestedValue"}}'
            Output:
                 {"key1": "value1", "key4": {"nestedKey": "nestedValue"}}
 """
@@ -24,6 +27,10 @@ from typing import Any
 
 
 def skip_ws(s: str, i: int) -> int:
+    """
+    Skip whitespace characters in string s starting at index i.
+    Returns the index of the first non-whitespace character.
+    """
     while i < len(s) and s[i].isspace():
         i += 1
     return i
@@ -51,14 +58,25 @@ def read_string(s: str, i: int) -> tuple[str, int, bool]:
 
 
 class StreamingJsonParser:
+    """
+    A streaming JSON parser that processes JSON objects incrementally from text chunks.
+
+    Only supports JSON objects (dictionaries) and string values. Invalid constructs
+    like arrays, numbers, booleans, and null are skipped.
+    """
     def __init__(self) -> None:
         self._buffer: str = ""
         self._result: dict[str, Any] = {}
 
     def consume(self, chunk: str) -> None:
+        """Add a chunk of text to the internal buffer for parsing."""
         self._buffer += chunk
 
     def get(self) -> dict[str, Any]:
+        """
+        Parse and return the last successfully parsed JSON object from the buffer.
+        Returns an empty dict if no valid object can be parsed.
+        """
         # Attempt to parse from the first '{' found.
         start = self._buffer.find("{")
         if start == -1:
@@ -72,6 +90,7 @@ class StreamingJsonParser:
             self._result = obj
 
         return self._result
+
 
     def _skip_invalid_value(self, s: str, i: int) -> int:
         """
@@ -106,7 +125,7 @@ class StreamingJsonParser:
 
         return i
 
-    def _read_value(self, s: str, i: int) -> tuple[Any, int, bool, bool]:
+    def _read_value(self, s: str, i: int) -> tuple[Any, int,  bool]:
         """
         Returns (value for key, next_index, partial, invalid)
         partial=True means input ended before value fully closed.
@@ -114,19 +133,18 @@ class StreamingJsonParser:
         """
         i = skip_ws(s, i)
         if i >= len(s):
-            return None, i, True, False
+            return None, i, False
 
         ch = s[i]
         if ch == '"':
-            val, nxt_idx, completed = read_string(s, i)
-            partial = not completed
-            return val, nxt_idx, partial, False
+            val, nxt_idx, _ = read_string(s, i)
+            return val, nxt_idx,  False
         if ch == "{":
-            obj, nxt_idx, partial, invalid = self._parse_object(s, i)
-            return obj, nxt_idx, partial, invalid
+            obj, nxt_idx, _, invalid = self._parse_object(s, i)
+            return obj, nxt_idx,  invalid
 
         # Anything else is invalid for our simplified grammar
-        return None, i, False, True
+        return None, i, True
 
     def _parse_object(self, s: str, i: int) -> tuple[dict[str, Any], int, bool, bool]:
         """
@@ -165,7 +183,7 @@ class StreamingJsonParser:
                 return obj, i, True, False
             i += 1
 
-            value, i, val_partial, invalid = self._read_value(s, i)
+            value, i, invalid = self._read_value(s, i)
             if invalid:
                 # Skip over the invalid construct
                 i = self._skip_invalid_value(s, i)
