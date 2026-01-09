@@ -5,7 +5,7 @@ Tests cover the main parser functionality, edge cases, and internal methods.
 """
 import pytest
 
-from json_parser import StreamingJsonParser, skip_ws, read_string
+from json_parser import StreamingJsonParser
 
 
 def test_parser_returns_empy_json_for_empty_or_invalid_json():
@@ -126,10 +126,11 @@ def test_parser_handles_invalid_value_types_correctly():
 
 def test_skip_ws_skips_leading_whitespace():
     """Test that skip_ws correctly skips all whitespace characters."""
+    parser = StreamingJsonParser()
     s = " \n\t\rabc"
-    assert skip_ws(s, 0) == 4
-    assert skip_ws(s, 4) == 4
-    assert skip_ws(s, len(s)) == len(s)
+    assert parser._skip_ws(s, 0) == 4  # pylint: disable=protected-access
+    assert parser._skip_ws(s, 4) == 4  # pylint: disable=protected-access
+    assert parser._skip_ws(s, len(s)) == len(s)  # pylint: disable=protected-access
 
 
 
@@ -139,7 +140,8 @@ def test_skip_ws_skips_leading_whitespace():
                          ('""', '', True)])
 def test_read_string_various_cases(s, expected_val, expected_completed):
     """Test read_string function with complete, incomplete, and empty strings."""
-    result_val, i, completed = read_string(s, 0)
+    parser = StreamingJsonParser()
+    result_val, i, completed = parser._read_string(s, 0)  # pylint: disable=protected-access
     assert completed is expected_completed
     assert result_val == expected_val
     assert i == len(s)
@@ -152,8 +154,9 @@ def test_read_string_various_cases(s, expected_val, expected_completed):
 def test_read_value_string(s, expected_val, expected_invalid):
     """Test _read_value method with strings and invalid values."""
     parser = StreamingJsonParser()
-    val, _, invalid = parser._read_value(s, 0)
+    val, _, invalid = parser._read_value(s, 0)  # pylint: disable=protected-access
     assert val == expected_val
+    assert invalid is expected_invalid
     assert invalid is expected_invalid
 
 def test_parse_object_returns_partial_for_incomplete_object():
@@ -161,7 +164,7 @@ def test_parse_object_returns_partial_for_incomplete_object():
     parser = StreamingJsonParser()
     s = '{"key": "value", "incomplete": '
     parser.consume(s)
-    obj, _, partial, invalid = parser._parse_object(s, 0)
+    obj, _, partial, invalid = parser._parse_object(s, 0)  # pylint: disable=protected-access
     assert partial is True
     assert invalid is False
     assert obj == {"key": "value"}
@@ -172,7 +175,7 @@ def test_parse_object_returns_correct_if_json_has_unsupported_construct():
     """Test _parse_object skips unsupported constructs and continues parsing."""
     parser = StreamingJsonParser()
     s = '{"key": "value", "invalid": [1, 2, 3]}'
-    obj, _, partial, invalid = parser._parse_object(s, 0)
+    obj, _, partial, invalid = parser._parse_object(s, 0)  # pylint: disable=protected-access
     assert invalid is False  # Parser successfully skips invalid values and continues
     assert partial is False  # Object is complete
     assert obj == {"key": "value"}
@@ -181,7 +184,7 @@ def test_parse_object_returns_complete_for_valid_object():
     """Test _parse_object correctly parses complete valid object."""
     parser = StreamingJsonParser()
     s = '{"key":  {"another": "item"}}'
-    obj, _, partial, invalid = parser._parse_object(s, 0)
+    obj, _, partial, invalid = parser._parse_object(s, 0)  # pylint: disable=protected-access
     assert partial is False
     assert invalid is False
     assert obj ==  {"key":  {"another": "item"}}

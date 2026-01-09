@@ -20,40 +20,21 @@ considered invalid and ignored.
                  "key3": true, "key4": {"nestedKey": "nestedValue"}}'
            Output:
                 {"key1": "value1", "key4": {"nestedKey": "nestedValue"}}
+
+
+One implementation trade off is that the parser does not remove processed data from the buffer.
+This simplifies the implementation at the cost of potentially higher memory usage
+if the buffer grows large with many incomplete JSON objects.
+When the large in size JSON objects are expected (order of hunders of MBs),
+I would suggest implementing trimming of the buffer to remove processed data
+up to the last complete JSON object.
+
+Another implementation detail is that helper methods are all instance methods rather
+than static methods. While this is less efficient, it improves code readability.
 """
 
 
 from typing import Any
-
-
-def skip_ws(s: str, i: int) -> int:
-    """
-    Skip whitespace characters in string s starting at index i.
-    Returns the index of the first non-whitespace character.
-    """
-    while i < len(s) and s[i].isspace():
-        i += 1
-    return i
-
-
-def read_string(s: str, i: int) -> tuple[str, int, bool]:
-    """
-    Read a JSON string starting at s[i] (which must be a quote).
-    Returns (value, next_index, completed_flag).
-    completed_flag == False means the string was partial (no closing quote).
-    """
-    i += 1  # Skip the opening '"'
-    out = []
-    while i < len(s):
-        ch = s[i]
-        if ch == '"':
-            return "".join(out), i + 1, True
-
-        out.append(ch)
-        i += 1
-
-    # Ran out of input; return partial string.
-    return "".join(out), i, False
 
 
 
@@ -67,6 +48,35 @@ class StreamingJsonParser:
     def __init__(self) -> None:
         self._buffer: str = ""
         self._result: dict[str, Any] = {}
+
+    def _skip_ws(self, s: str, i: int) -> int:
+        """
+        Skip whitespace characters in string s starting at index i.
+        Returns the index of the first non-whitespace character.
+        """
+        while i < len(s) and s[i].isspace():
+            i += 1
+        return i
+
+    def _read_string(self, s: str, i: int) -> tuple[str, int, bool]:
+        """
+        Read a JSON string starting at s[i] (which must be a quote).
+        Returns (value, next_index, completed_flag).
+        completed_flag == False means the string was partial (no closing quote).
+        """
+        i += 1  # Skip the opening '"'
+        out = []
+        while i < len(s):
+            ch = s[i]
+            if ch == '"':
+                return "".join(out), i + 1, True
+
+            out.append(ch)
+            i += 1
+
+        # Ran out of input; return partial string.
+        return "".join(out), i, False
+
 
     def consume(self, chunk: str) -> None:
         """Add a chunk of text to the internal buffer for parsing."""
@@ -97,7 +107,7 @@ class StreamingJsonParser:
         Skip over an invalid value construct (array, number, boolean, null).
         Returns the index after the invalid construct.
         """
-        i = skip_ws(s, i)
+        i = self._skip_ws(s, i)
         if i >= len(s):
             return i
 
@@ -114,7 +124,7 @@ class StreamingJsonParser:
                     depth -= 1
                 elif s[i] == '"':
                     # Skip strings inside arrays
-                    _, i, _ = read_string(s, i)
+                    _, i, _ = self._read_string(s, i)
                     continue
                 i += 1
             return i
@@ -131,13 +141,13 @@ class StreamingJsonParser:
         partial=True means input ended before value fully closed.
         invalid=True means encountered unsupported value (e.g., number or a list).
         """
-        i = skip_ws(s, i)
+        i = self._skip_ws(s, i)
         if i >= len(s):
             return None, i, False
 
         ch = s[i]
         if ch == '"':
-            val, nxt_idx, _ = read_string(s, i)
+            val, nxt_idx, _ = self._read_string(s, i)
             return val, nxt_idx,  False
         if ch == "{":
             obj, nxt_idx, _, invalid = self._parse_object(s, i)
@@ -158,7 +168,7 @@ class StreamingJsonParser:
 
         while True:
             # parse the key
-            i = skip_ws(s, i)
+            i = self._skip_ws(s, i)
             if i >= len(s):
                 return obj, i, True, False
             if s[i] == "}":
@@ -170,13 +180,13 @@ class StreamingJsonParser:
             if s[i] != '"':
                 # Unexpected token; treat as partial.
                 return obj, i, True, False
-            key, i, key_completed = read_string(s, i)
+            key, i, key_completed = self._read_string(s, i)
             if not key_completed:
                 # if the key is not complete, return the state of the object so far
                 return obj, i, True, False
 
             # parse the value
-            i = skip_ws(s, i)
+            i = self._skip_ws(s, i)
             if i >= len(s):
                 return obj, i, True, False
             if s[i] != ":":
@@ -190,13 +200,13 @@ class StreamingJsonParser:
             elif value:
                 obj[key] = value
 
-            i = skip_ws(s, i)
+            i = self._skip_ws(s, i)
             if i >= len(s):
                 return obj, i, True, False
             if s[i] == ",":
                 i += 1
                 # Support trailing comma followed immediately by closing brace.
-                i = skip_ws(s, i)
+                i = self._skip_ws(s, i)
                 if i < len(s) and s[i] == "}":
                     return obj, i + 1, False, False
                 continue
