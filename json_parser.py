@@ -56,7 +56,6 @@ class StreamingJsonParser:
         """
         while i < len(s) and s[i].isspace():
             i += 1
-        return i
 
     def _read_string(self, s: str, i: int) -> tuple[str, int, bool]:
         """
